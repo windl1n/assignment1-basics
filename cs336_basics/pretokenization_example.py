@@ -1,4 +1,6 @@
+from collections import defaultdict
 import os
+import re
 from typing import BinaryIO
 
 def find_chunk_boundaries(
@@ -49,14 +51,42 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
-## Usage
-with open(..., "rb") as f:
-    boundaries = find_chunk_boundaries(
-        f, num_processes, "<|endoftext|>".encode("utf-8"))
-        
-    # The following is a serial implementation, but you can parallelize this 
-    # by sending each start/end pair to a set of processes.
-    for start, end in zip(boundaries[:-1], boundaries[1:]):
-        f.seek(start)
-        chunk = f.read(end - start).decode("utf-8", errors="ignore")
-        # Run pre-tokenization on your chunk and store the counts for each pre-token
+
+def pre_tokenization(corpus: str):
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    merges: dict[tuple[int, int], int] = {} # (old1, old2) -> new
+    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # Initialize with single byte tokens
+    
+    token_counts: dict[bytes, int] = defaultdict(int)
+    for token_match in re.finditer(PAT, corpus):
+        token_counts[token_match.group().encode("utf-8")] += 1    # {(l, o, w): 1}
+    pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+    for token, count in token_counts.items():
+        for b1, b2 in zip(token, token[1:]):
+            pair_counts[(b1, b2)] += count                       # (l, o), (o, w)
+    pair = max(pair_counts)
+    index1, index2 = pair
+
+    new_index = len(vocab)
+    merges[pair] = new_index
+    vocab[new_index] = vocab[index1] + vocab[index2]
+    
+
+def tokenize(file_path: str, num_processes: int = 1):
+    ## Usage
+    with open(file_path, "rb") as f:
+        boundaries = find_chunk_boundaries(
+            f, num_processes, "<|endoftext|>".encode("utf-8"))
+            
+        # The following is a serial implementation, but you can parallelize this 
+        # by sending each start/end pair to a set of processes. 
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            # Run pre-tokenization on your chunk and store the counts for each pre-token
+
+if __name__ == "__main__":
+    # Example usage
+    file_path = "../data/TinyStoriesV2-GPT4-valid.txt"
+    num_processes = 4  # Adjust based on your system
+    tokenize(file_path, num_processes)
