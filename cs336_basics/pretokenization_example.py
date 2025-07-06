@@ -1,6 +1,6 @@
 from collections import defaultdict
 import os
-import re
+import regex as re
 from typing import BinaryIO
 
 def find_chunk_boundaries(
@@ -52,7 +52,7 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def merge(token: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
+def merge(token: tuple[int, ...], pair: tuple[int, int], new_index: int) -> tuple[int,...]:
     """
     Merge the pair of tokens in the token list and return a new token list.
     from https://github.com/stanford-cs336/spring2025-lectures/blob/main/lecture_01.py#L533
@@ -66,10 +66,10 @@ def merge(token: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
         else:
             new_token.append(token[i])
             i += 1
-    return new_token
+    return tuple(new_token)
 
-def merge_dict(token_counts: dict[list[int], int], pair: tuple[int, int], new_index):
-    new_token: dict[list[int], int] = defaultdict(int)
+def merge_dict(token_counts: dict[tuple[int,...], int], pair: tuple[int, int], new_index):
+    new_token: dict[tuple[int,...], int] = defaultdict(int)
     for token, count in token_counts.items():
         if len(token) == 1:
             new_token[token] += count
@@ -82,9 +82,9 @@ def merge_dict(token_counts: dict[list[int], int], pair: tuple[int, int], new_in
 def pre_tokenization(corpus: str, vocab: dict[int, bytes], merges: dict[tuple[int, int], int], vocab_size: int = 1000):
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     
-    token_counts: dict[list[int], int] = defaultdict(int) # merge this after got a new vocab 
+    token_counts: dict[tuple[int,...], int] = defaultdict(int) # merge this after got a new vocab 
     for token_match in re.finditer(PAT, corpus):
-        token_counts[list(map(int, token_match.group().encode("utf-8")))] += 1    # {[, ,]: 1}
+        token_counts[tuple(map(int, token_match.group().encode("utf-8")))] += 1    # {[, ,]: 1}
     
     while len(vocab) < vocab_size:
         # {(l, o): 1, (o, w): 1} everytime recount this
@@ -120,15 +120,15 @@ def tokenize(file_path: str, num_processes: int = 1):
             vocab, merges = pre_tokenization(chunk, vocab, merges, vocab_size=1000)
     print(f"Vocabulary size: {len(vocab)}")
     # Save the vocab and merges to files
-    with open("vocab.txt", "w") as vocab_file:
+    with open("tmp/vocab.txt", "w") as vocab_file:
         for index, token in sorted(vocab.items()):
-            vocab_file.write(f"{index}\t{token.decode('utf-8')}\n")
-    with open("merges.txt", "w") as merges_file:
+            vocab_file.write(f"{index}\t{token}\n")
+    with open("tmp/merges.txt", "w") as merges_file:
         for (old1, old2), new_index in sorted(merges.items()):
             merges_file.write(f"{old1} {old2} -> {new_index}\n")
 
 if __name__ == "__main__":
     # Example usage
-    file_path = "../data/TinyStoriesV2-GPT4-valid.txt"
+    file_path = "data/TinyStoriesV2-GPT4-valid.txt"
     num_processes = 4  # Adjust based on your system
     tokenize(file_path, num_processes)
